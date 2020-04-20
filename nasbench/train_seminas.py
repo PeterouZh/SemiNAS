@@ -17,45 +17,46 @@ import utils
 from controller import NAO
 from nasbench import api
 
+def build_parser():
+    parser = argparse.ArgumentParser()
+    # Basic model parameters.
+    parser.add_argument('--data', type=str, default='data')
+    parser.add_argument('--output_dir', type=str, default='models')
+    parser.add_argument('--seed', type=int, default=1)
+    parser.add_argument('--seed_arch', type=int, default=100)
+    parser.add_argument('--random_arch', type=int, default=10000)
+    parser.add_argument('--nodes', type=int, default=7)
+    parser.add_argument('--new_arch', type=int, default=100)
+    parser.add_argument('--k', type=int, default=100)
+    parser.add_argument('--encoder_layers', type=int, default=1)
+    parser.add_argument('--hidden_size', type=int, default=16)
+    parser.add_argument('--mlp_layers', type=int, default=2)
+    parser.add_argument('--mlp_hidden_size', type=int, default=64)
+    parser.add_argument('--decoder_layers', type=int, default=1)
+    parser.add_argument('--source_length', type=int, default=27)
+    parser.add_argument('--encoder_length', type=int, default=27)
+    parser.add_argument('--decoder_length', type=int, default=27)
+    parser.add_argument('--dropout', type=float, default=0.1)
+    parser.add_argument('--l2_reg', type=float, default=1e-4)
+    parser.add_argument('--vocab_size', type=int, default=7)
+    parser.add_argument('--max_step_size', type=int, default=100)
+    parser.add_argument('--trade_off', type=float, default=0.8)
+    parser.add_argument('--pretrain_epochs', type=int, default=10000)
+    parser.add_argument('--epochs', type=int, default=1000)
+    parser.add_argument('--up_sample_ratio', type=int, default=100)
+    parser.add_argument('--batch_size', type=int, default=100)
+    parser.add_argument('--lr', type=float, default=0.001)
+    parser.add_argument('--optimizer', type=str, default='adam')
+    parser.add_argument('--grad_bound', type=float, default=5.0)
+    parser.add_argument('--iteration', type=int, default=2)
+    return parser
+# args = parser.parse_args()
 
-parser = argparse.ArgumentParser()
-# Basic model parameters.
-parser.add_argument('--data', type=str, default='data')
-parser.add_argument('--output_dir', type=str, default='models')
-parser.add_argument('--seed', type=int, default=1)
-parser.add_argument('--seed_arch', type=int, default=100)
-parser.add_argument('--random_arch', type=int, default=10000)
-parser.add_argument('--nodes', type=int, default=7)
-parser.add_argument('--new_arch', type=int, default=100)
-parser.add_argument('--k', type=int, default=100)
-parser.add_argument('--encoder_layers', type=int, default=1)
-parser.add_argument('--hidden_size', type=int, default=16)
-parser.add_argument('--mlp_layers', type=int, default=2)
-parser.add_argument('--mlp_hidden_size', type=int, default=64)
-parser.add_argument('--decoder_layers', type=int, default=1)
-parser.add_argument('--source_length', type=int, default=27)
-parser.add_argument('--encoder_length', type=int, default=27)
-parser.add_argument('--decoder_length', type=int, default=27)
-parser.add_argument('--dropout', type=float, default=0.1)
-parser.add_argument('--l2_reg', type=float, default=1e-4)
-parser.add_argument('--vocab_size', type=int, default=7)
-parser.add_argument('--max_step_size', type=int, default=100)
-parser.add_argument('--trade_off', type=float, default=0.8)
-parser.add_argument('--pretrain_epochs', type=int, default=10000)
-parser.add_argument('--epochs', type=int, default=1000)
-parser.add_argument('--up_sample_ratio', type=int, default=100)
-parser.add_argument('--batch_size', type=int, default=100)
-parser.add_argument('--lr', type=float, default=0.001)
-parser.add_argument('--optimizer', type=str, default='adam')
-parser.add_argument('--grad_bound', type=float, default=5.0)
-parser.add_argument('--iteration', type=int, default=2)
-args = parser.parse_args()
+# log_format = '%(asctime)s %(message)s'
+# logging.basicConfig(stream=sys.stdout, level=logging.INFO,
+#     format=log_format, datefmt='%m/%d %I:%M:%S %p')
 
-log_format = '%(asctime)s %(message)s'
-logging.basicConfig(stream=sys.stdout, level=logging.INFO,
-    format=log_format, datefmt='%m/%d %I:%M:%S %p')
-
-def controller_train(train_queue, model, optimizer):
+def controller_train(args, train_queue, model, optimizer):
     objs = utils.AvgrageMeter()
     mse = utils.AvgrageMeter()
     nll = utils.AvgrageMeter()
@@ -96,14 +97,14 @@ def controller_infer(queue, model, step, direction='+'):
     return new_arch_list, new_predict_values
 
 
-def train_controller(model, train_input, train_target, epochs):
+def train_controller(args, model, train_input, train_target, epochs):
     logging.info('Train data: {}'.format(len(train_input)))
     controller_train_dataset = utils.ControllerDataset(train_input, train_target, True)
     controller_train_queue = torch.utils.data.DataLoader(
         controller_train_dataset, batch_size=args.batch_size, shuffle=True, pin_memory=True)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.l2_reg)
     for epoch in range(1, epochs + 1):
-        loss, mse, ce = controller_train(controller_train_queue, model, optimizer)
+        loss, mse, ce = controller_train(args, controller_train_queue, model, optimizer)
         logging.info("epoch %04d train loss %.6f mse %.6f ce %.6f", epoch, loss, mse, ce)
 
 
@@ -132,7 +133,7 @@ def generate_synthetic_controller_data(nasbench, model, base_arch=None, random_a
     return synthetic_input, synthetic_target
 
 
-def main():
+def main(args, myargs):
     if not torch.cuda.is_available():
         logging.info('No GPU found!')
         sys.exit(1)
@@ -148,7 +149,7 @@ def main():
 
     args.source_length = args.encoder_length = args.decoder_length = (args.nodes + 2) * (args.nodes - 1) // 2
 
-    nasbench = api.NASBench(os.path.join(args.data, 'nasbench_full.tfrecord'))
+    nasbench = api.NASBench(os.path.join(args.nasbench_dir, 'nasbench_full.tfrecord'))
     
     controller = NAO(
         args.encoder_layers,
@@ -212,7 +213,7 @@ def main():
 
         # Pre-train
         logging.info('Pre-train EPD')
-        train_controller(controller, train_encoder_input, train_encoder_target, args.pretrain_epochs)
+        train_controller(args, controller, train_encoder_input, train_encoder_target, args.pretrain_epochs)
         logging.info('Finish pre-training EPD')
         # Generate synthetic data
         logging.info('Generate synthetic data for EPD')
@@ -225,7 +226,7 @@ def main():
         all_encoder_target = train_encoder_target * up_sample_ratio + synthetic_encoder_target
         # Train
         logging.info('Train EPD')
-        train_controller(controller, all_encoder_input, all_encoder_target, args.epochs)
+        train_controller(args, controller, all_encoder_input, all_encoder_target, args.epochs)
         logging.info('Finish training EPD')
         
     
@@ -265,5 +266,33 @@ def main():
     print(nasbench.get_budget_counters())
 
 
+def run(argv_str=None):
+  from template_lib.utils.config import parse_args_and_setup_myargs, config2args
+  from template_lib.utils.modelarts_utils import prepare_dataset
+  run_script = os.path.relpath(__file__, os.getcwd())
+  args1, myargs, _ = parse_args_and_setup_myargs(argv_str, run_script=run_script, start_tb=False)
+  myargs.args = args1
+  myargs.config = getattr(myargs.config, args1.command)
+
+  parser = build_parser()
+  args = parser.parse_args([])
+  if hasattr(myargs.config, 'datasets'):
+    prepare_dataset(myargs.config.datasets, cfg=myargs.config)
+
+  args = config2args(myargs.config.args, args)
+  args.output_dir = args1.outdir
+
+  log_format = '%(asctime)s %(message)s'
+  logging.basicConfig(stream=sys.stdout, level=logging.INFO,
+      format=log_format, datefmt='%m/%d %I:%M:%S %p')
+  # root_logger = logging.getLogger()
+  # root_logger.addHandler(myargs.logger.handlers[0])
+  logging.info('test logging.')
+
+  main(args, myargs)
+
 if __name__ == '__main__':
-    main()
+
+  run()
+
+
