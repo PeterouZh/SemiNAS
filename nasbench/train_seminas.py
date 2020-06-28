@@ -118,7 +118,9 @@ def generate_synthetic_controller_data(nasbench, model, base_arch=None, random_a
                 random_synthetic_input.append(seq)
         
         controller_synthetic_dataset = utils.ControllerDataset(random_synthetic_input, None, False)      
-        controller_synthetic_queue = torch.utils.data.DataLoader(controller_synthetic_dataset, batch_size=len(controller_synthetic_dataset), shuffle=False, pin_memory=True)
+        controller_synthetic_queue = torch.utils.data.DataLoader(
+            controller_synthetic_dataset, batch_size=len(controller_synthetic_dataset),
+            shuffle=False, pin_memory=True)
 
         with torch.no_grad():
             model.eval()
@@ -149,7 +151,7 @@ def main(args, myargs):
 
     args.source_length = args.encoder_length = args.decoder_length = (args.nodes + 2) * (args.nodes - 1) // 2
 
-    nasbench = api.NASBench(os.path.join(args.nasbench_dir, 'nasbench_full.tfrecord'))
+    nasbench = api.NASBench(args.nasbench_file, num_samples=args.num_samples)
     
     controller = NAO(
         args.encoder_layers,
@@ -166,7 +168,8 @@ def main(args, myargs):
     logging.info("param size = %d", utils.count_parameters(controller))
     controller = controller.cuda()
 
-    child_arch_pool, child_seq_pool, child_arch_pool_valid_acc = utils.generate_arch(args.seed_arch, nasbench, need_perf=True)
+    child_arch_pool, child_seq_pool, child_arch_pool_valid_acc = utils.generate_arch(
+        args.seed_arch, nasbench, need_perf=True)
 
     arch_pool = []
     seq_pool = []
@@ -217,7 +220,8 @@ def main(args, myargs):
         logging.info('Finish pre-training EPD')
         # Generate synthetic data
         logging.info('Generate synthetic data for EPD')
-        synthetic_encoder_input, synthetic_encoder_target = generate_synthetic_controller_data(nasbench, controller, train_encoder_input, args.random_arch)
+        synthetic_encoder_input, synthetic_encoder_target = generate_synthetic_controller_data(
+            nasbench, controller, train_encoder_input, args.random_arch)
         if args.up_sample_ratio is None:
             up_sample_ratio = np.ceil(args.random_arch / len(train_encoder_input)).astype(np.int)
         else:
@@ -239,16 +243,19 @@ def main(args, myargs):
         unique_input = [unique_input[i] for i in unique_indices]
         topk_archs = unique_input[:args.k]
         controller_infer_dataset = utils.ControllerDataset(topk_archs, None, False)
-        controller_infer_queue = torch.utils.data.DataLoader(controller_infer_dataset, batch_size=len(controller_infer_dataset), shuffle=False, pin_memory=True)
+        controller_infer_queue = torch.utils.data.DataLoader(
+            controller_infer_dataset, batch_size=len(controller_infer_dataset), shuffle=False, pin_memory=True)
         
         while len(new_archs) < args.new_arch:
             predict_step_size += 1
             logging.info('Generate new architectures with step size %d', predict_step_size)
-            new_seq, new_perfs = controller_infer(controller_infer_queue, controller, predict_step_size, direction='+')
+            new_seq, new_perfs = controller_infer(
+                controller_infer_queue, controller, predict_step_size, direction='+')
             for seq in new_seq:
                 matrix, ops = utils.convert_seq_to_arch(seq)
                 arch = api.ModelSpec(matrix=matrix, ops=ops)
-                if nasbench.is_valid(arch) and len(arch.ops) == 7 and seq not in train_encoder_input and seq not in new_seqs:
+                if nasbench.is_valid(arch) and len(arch.ops) == 7 \
+                      and seq not in train_encoder_input and seq not in new_seqs:
                     new_archs.append(arch)
                     new_seqs.append(seq)
                 if len(new_seqs) >= args.new_arch:
